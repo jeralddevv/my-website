@@ -1623,9 +1623,18 @@ document.getElementById('googleSignInBtn').addEventListener('click', ()=>{
 document.getElementById('logoutBtn').addEventListener('click', ()=> sb.auth.signOut());
 
 async function loadProfile(userId){
-  const { data, error } = await sb.from('profiles').select('role, full_name').eq('id', userId).single();
-  currentRole = (!error && data) ? data.role : 'employee';
-  document.querySelector('.nav-item[data-view="admin"]').style.display = currentRole==='admin' ? 'flex' : 'none';
+  console.log('loadProfile: starting query for', userId);
+  try{
+    const { data, error } = await sb.from('profiles').select('role, full_name').eq('id', userId).single();
+    console.log('loadProfile: query returned', { data, error });
+    currentRole = (!error && data) ? data.role : 'employee';
+    console.log('loadProfile: currentRole set to', currentRole);
+    document.querySelector('.nav-item[data-view="admin"]').style.display = currentRole==='admin' ? 'flex' : 'none';
+    console.log('loadProfile: admin nav visibility updated');
+  } catch(err){
+    console.error('loadProfile: THREW AN ERROR', err);
+    currentRole = 'employee';
+  }
 }
 
 sb.auth.onAuthStateChange(async (event, session)=>{
