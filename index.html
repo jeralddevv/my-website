@@ -1,73 +1,3 @@
-<?php
-/* ============================================================
-   work-schedule.php
-   ============================================================ */
-
-define('SCHED_DATA_FILE', __DIR__ . '/schedule-data.json');
-
-// Auto-create the data file the first time this page ever runs,
-// exactly like the NS/Replacement monitoring system does.
-$sched_file_existed = file_exists(SCHED_DATA_FILE);
-if (!$sched_file_existed) {
-    file_put_contents(
-        SCHED_DATA_FILE,
-        json_encode(['companies' => [], 'gondolas' => [], 'merchandisers' => [], 'archives' => []], JSON_PRETTY_PRINT),
-        LOCK_EX
-    );
-}
-
-function load_schedule_data(): array {
-    $json = file_get_contents(SCHED_DATA_FILE);
-    $data = json_decode($json, true);
-    return is_array($data) ? $data : ['companies' => [], 'gondolas' => [], 'merchandisers' => [], 'archives' => []];
-}
-
-function save_schedule_data(array $data): bool {
-    $fp = fopen(SCHED_DATA_FILE, 'c+');
-    if (!$fp) return false;
-    if (!flock($fp, LOCK_EX)) { fclose($fp); return false; }
-    ftruncate($fp, 0);
-    rewind($fp);
-    fwrite($fp, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-    fflush($fp);
-    flock($fp, LOCK_UN);
-    fclose($fp);
-    return true;
-}
-
-if (isset($_GET['action'])) {
-    header('Content-Type: application/json');
-
-    if ($_GET['action'] === 'load' && $_SERVER['REQUEST_METHOD'] === 'GET') {
-        // First time ever (file didn't exist before this request) — tell the
-        // client to seed its built-in demo data, then save it back to us.
-        echo $sched_file_existed ? json_encode(load_schedule_data()) : json_encode(['fresh' => true]);
-        exit;
-    }
-
-    if ($_GET['action'] === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        $raw = file_get_contents('php://input');
-        $parsed = json_decode($raw, true);
-        if ($parsed === null) {
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => 'Invalid JSON payload']);
-            exit;
-        }
-        $ok = save_schedule_data($parsed);
-        if (!$ok) {
-            http_response_code(500);
-            echo json_encode(['ok' => false, 'error' => 'Could not write data file — check folder write permissions']);
-            exit;
-        }
-        echo json_encode(['ok' => true, 'savedAt' => date('c')]);
-        exit;
-    }
-
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'Unknown action']);
-    exit;
-}
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -77,6 +7,7 @@ if (isset($_GET['action'])) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --bg:#f3f4f2;
@@ -386,7 +317,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 .cal-entry.closing{background:var(--shift-closing-soft);color:var(--shift-closing);}
 .cal-entry.roving{background:var(--shift-roving-soft);color:var(--shift-roving);}
 .cal-more{font-size:10px;color:var(--ink-faint);margin-top:3px;}
-
+.cal-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
 /* ---------- modal ---------- */
 .modal-bg{
   position:fixed;inset:0;background:rgba(10,14,12,.5);display:none;align-items:center;justify-content:center;
@@ -437,6 +368,20 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 }
 .stat .n{font-family:var(--font-display);font-size:24px;font-weight:700;}
 .stat .l{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-top:2px;}
+/* ---------- AUTH ---------- */
+.auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:500;padding:20px;}
+.auth-card{background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);width:100%;max-width:360px;padding:24px;}
+.auth-tabs{display:flex;border:1px solid var(--line-strong);border-radius:8px;margin:16px 0;overflow:hidden;}
+.auth-tab{flex:1;text-align:center;padding:8px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--ink-dim);}
+.auth-tab.active{background:var(--accent);color:var(--accent-ink);}
+.auth-form .field{margin-bottom:12px;}
+.auth-links{text-align:center;margin-top:10px;font-size:12px;}
+.auth-links a{color:var(--accent);text-decoration:none;font-weight:600;}
+.auth-divider{display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--ink-faint);font-size:11px;text-transform:uppercase;}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--line);}
+.auth-msg{margin-top:12px;font-size:12.5px;text-align:center;min-height:16px;}
+.auth-msg.err{color:var(--danger);}
+.auth-msg.ok{color:var(--accent);}
 
 @media(max-width:900px){
   .form-grid{grid-template-columns:1fr;}
@@ -447,6 +392,42 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 </style>
 </head>
 <body data-theme="light">
+
+<div id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="brand" style="justify-content:center;border:none;padding-bottom:6px;">
+      <div class="brand-mark"></div>
+      <div><div class="brand-text">Roster</div><div class="brand-sub">Merchandiser Ops</div></div>
+    </div>
+    <div id="authTabs" class="auth-tabs">
+      <div class="auth-tab active" data-tab="login">Log In</div>
+      <div class="auth-tab" data-tab="signup">Sign Up</div>
+    </div>
+    <form id="loginForm" class="auth-form">
+      <div class="field"><label>Email</label><input type="email" id="loginEmail" required></div>
+      <div class="field"><label>Password</label><input type="password" id="loginPassword" required></div>
+      <button type="submit" class="btn primary" style="width:100%;justify-content:center;">Log In</button>
+      <div class="auth-links"><a href="#" id="forgotPasswordLink">Forgot password?</a></div>
+    </form>
+    <form id="signupForm" class="auth-form" style="display:none;">
+      <div class="field"><label>Full Name</label><input type="text" id="signupName" required></div>
+      <div class="field"><label>Email</label><input type="email" id="signupEmail" required></div>
+      <div class="field"><label>Password</label><input type="password" id="signupPassword" required minlength="6"></div>
+      <button type="submit" class="btn primary" style="width:100%;justify-content:center;">Create Account</button>
+    </form>
+    <form id="forgotForm" class="auth-form" style="display:none;">
+      <div class="field"><label>Email</label><input type="email" id="forgotEmail" required></div>
+      <button type="submit" class="btn primary" style="width:100%;justify-content:center;">Send Reset Link</button>
+      <div class="auth-links"><a href="#" id="backToLoginLink">Back to log in</a></div>
+    </form>
+    <div class="auth-divider"><span>or</span></div>
+    <button type="button" id="googleSignInBtn" class="btn" style="width:100%;justify-content:center;">
+      <i class="fa-brands fa-google"></i> Continue with Google
+    </button>
+    <div id="authMsg" class="auth-msg"></div>
+  </div>
+</div>
+
 <div class="app">
 
   <!-- SIDEBAR -->
@@ -481,6 +462,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
       </div>
     </nav>
     <div class="nav-foot">
+       <button class="btn sm ghost" id="logoutBtn" style="width:100%;margin-top:8px;">Log out</button>
       <div class="theme-toggle">
         <span id="themeLabel">Light mode</span>
         <div class="switch" id="themeSwitch"></div>
@@ -801,6 +783,9 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
    DATA LAYER — pure in-memory JS objects, no backend/database.
    Persistence is via manual JSON Export / Import (Admin tab).
    ============================================================ */
+const sb = supabase.createClient('https://qmkeiubzclyuuzlmcdha.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFta2VpdWJ6Y2x5dXV6bG1jZGhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3OTg1MzcsImV4cCI6MjA5ODM3NDUzN30.-nXjqM0oWpV_yoU5IdGo-VoEHfour6KP6mSJw5nij0g');
+document.querySelector('.app').style.display = 'none';
+   
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const SHIFT_LABEL = {OPENING:'Opening',MID:'Mid',CLOSING:'Closing',ROVING:'Roving'};
 const SHIFT_ICON = {OPENING:'fa-sun',MID:'fa-clock',CLOSING:'fa-moon',ROVING:'fa-person-walking'};
@@ -1446,46 +1431,29 @@ function setSyncStatus(text, tone){
 
 async function saveToServer(silent){
   try{
-    const payload = { companies, gondolas, merchandisers, archives };
-    const res = await fetch(SYNC_URL + '?action=save', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if(data.ok){
-      serverMode = true;
-      setSyncStatus('Saved to server ' + new Date().toLocaleTimeString(), 'ok');
-      if(!silent) toast('Saved to server');
-    } else {
-      setSyncStatus('Save failed: ' + (data.error||'unknown error'), 'err');
-      if(!silent) toast('Save to server failed — see Admin panel');
-    }
+    const { error } = await sb.from('roster_data')
+      .update({ companies, gondolas, merchandisers, archives, updated_at: new Date().toISOString() })
+      .eq('id', 1);
+    if(error) throw error;
+    setSyncStatus('Saved to server ' + new Date().toLocaleTimeString(), 'ok');
+    if(!silent) toast('Saved to server');
   }catch(err){
-    serverMode = false;
-    setSyncStatus('Not connected to a PHP server — changes stay in this browser tab only', 'err');
-    if(!silent) toast('Could not reach the server');
+    setSyncStatus('Save failed: ' + err.message, 'err');
+    if(!silent) toast('Save to server failed — see Admin panel');
   }
 }
 
 async function loadFromServer(){
   try{
-    const res = await fetch(SYNC_URL + '?action=load');
-    const data = await res.json();
-    if(data.fresh){
-      // no data file yet on the server — push the built-in demo/seed data so the file gets created
-      serverMode = true;
-      setSyncStatus('First run — seeding server with demo data…', 'ok');
-      await saveToServer(true);
-    } else {
-      companies = data.companies || companies;
-      gondolas = data.gondolas || gondolas;
-      merchandisers = data.merchandisers || merchandisers;
-      archives = data.archives || archives;
-      serverMode = true;
-      setSyncStatus('Loaded from server', 'ok');
-    }
+    const { data, error } = await sb.from('roster_data').select('*').eq('id', 1).single();
+    if(error) throw error;
+    companies = data.companies || companies;
+    gondolas = data.gondolas || gondolas;
+    merchandisers = data.merchandisers || merchandisers;
+    archives = data.archives || archives;
+    setSyncStatus('Loaded from server', 'ok');
   }catch(err){
-    serverMode = false;
-    setSyncStatus('Not connected to a PHP server — using local demo data only', 'err');
+    setSyncStatus('Could not load: ' + err.message, 'err');
   }
   renderSummary(); renderList(); renderCalendar(); renderAdmin();
 }
@@ -1592,11 +1560,88 @@ document.getElementById('clearAllBtn').addEventListener('click', ()=>{
 });
 document.getElementById('saveNowBtn').addEventListener('click', ()=>saveToServer());
 
-/* ============================================================
-   INIT — load saved roster from the server, falling back to
-   the built-in demo data if this file isn't running under PHP.
-   ============================================================ */
-loadFromServer();
+let currentUser = null, currentRole = 'employee';
+
+document.getElementById('authTabs').addEventListener('click', e=>{
+  const t = e.target.closest('.auth-tab'); if(!t) return;
+  document.querySelectorAll('.auth-tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById('loginForm').style.display = t.dataset.tab==='login' ? 'block':'none';
+  document.getElementById('signupForm').style.display = t.dataset.tab==='signup' ? 'block':'none';
+  document.getElementById('forgotForm').style.display = 'none';
+  authMsg('');
+});
+function authMsg(text, tone){
+  const el = document.getElementById('authMsg');
+  el.textContent = text; el.className = 'auth-msg' + (tone?' '+tone:'');
+}
+
+document.getElementById('loginForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword({
+    email: document.getElementById('loginEmail').value.trim(),
+    password: document.getElementById('loginPassword').value
+  });
+  if(error) authMsg(error.message, 'err');
+});
+
+document.getElementById('signupForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const { error } = await sb.auth.signUp({
+    email: document.getElementById('signupEmail').value.trim(),
+    password: document.getElementById('signupPassword').value,
+    options:{ data:{ full_name: document.getElementById('signupName').value.trim() } }
+  });
+  if(error) return authMsg(error.message, 'err');
+  authMsg('Check your email to confirm your account.', 'ok');
+});
+
+document.getElementById('forgotPasswordLink').addEventListener('click', e=>{
+  e.preventDefault();
+  document.getElementById('loginForm').style.display='none';
+  document.getElementById('signupForm').style.display='none';
+  document.getElementById('forgotForm').style.display='block';
+});
+document.getElementById('backToLoginLink').addEventListener('click', e=>{
+  e.preventDefault();
+  document.getElementById('forgotForm').style.display='none';
+  document.getElementById('loginForm').style.display='block';
+});
+document.getElementById('forgotForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const { error } = await sb.auth.resetPasswordForEmail(
+    document.getElementById('forgotEmail').value.trim(),
+    { redirectTo: window.location.origin + window.location.pathname }
+  );
+  if(error) return authMsg(error.message, 'err');
+  authMsg('Reset link sent — check your email.', 'ok');
+});
+
+document.getElementById('googleSignInBtn').addEventListener('click', ()=>{
+  sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.origin + window.location.pathname } });
+});
+document.getElementById('logoutBtn').addEventListener('click', ()=> sb.auth.signOut());
+
+async function loadProfile(userId){
+  const { data, error } = await sb.from('profiles').select('role, full_name').eq('id', userId).single();
+  currentRole = (!error && data) ? data.role : 'employee';
+  document.querySelector('.nav-item[data-view="admin"]').style.display = currentRole==='admin' ? 'flex' : 'none';
+}
+
+sb.auth.onAuthStateChange(async (event, session)=>{
+  if(session && session.user){
+    currentUser = session.user;
+    await loadProfile(currentUser.id);
+    document.getElementById('authScreen').style.display = 'none';
+    document.querySelector('.app').style.display = 'flex';
+    loadFromServer();
+  } else {
+    currentUser = null;
+    document.getElementById('authScreen').style.display = 'flex';
+    document.querySelector('.app').style.display = 'none';
+  }
+});
+
 </script>
 </body>
 </html>
