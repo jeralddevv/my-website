@@ -1629,6 +1629,7 @@ async function loadProfile(userId){
 }
 
 sb.auth.onAuthStateChange(async (event, session)=>{
+  console.log('AUTH EVENT:', event, session);
   if(session && session.user){
     currentUser = session.user;
     await loadProfile(currentUser.id);
