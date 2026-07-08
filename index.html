@@ -389,7 +389,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
   .perday-row{grid-template-columns:38px 74px 1fr 1fr;}
   .admin-grid{grid-template-columns:1fr;}
 }
-
+/* ---------- MOBILE DEVICE ---------- */
 .sidebar-toggle{display:none;flex-shrink:0;}
 
 .sidebar-backdrop{
@@ -426,9 +426,24 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
   .stat{min-width:44%;padding:12px;}
   .stat .n{font-size:19px;}
 
-  .cal-cell{min-height:76px;padding:5px;}
-  .cal-entry{font-size:8.5px;}
-  .cal-legend{gap:8px;font-size:10.5px;padding:0 14px 12px;}
+  .cal-head{padding:12px;flex-wrap:wrap;gap:8px;}
+  .cal-nav{gap:6px;}
+  .cal-month{font-size:13.5px;min-width:120px;}
+  .cal-nav .btn{padding:4px 9px;font-size:12px;}
+
+  .cal-legend{gap:6px 10px;font-size:9.5px;padding:0 10px 10px;}
+
+  .cal-grid{grid-template-columns:repeat(7,minmax(0,1fr));}
+  .cal-dow{padding:4px 2px;font-size:8.5px;}
+  .cal-cell{min-height:58px;padding:3px;}
+  .cal-date{font-size:10px;margin-bottom:2px;}
+  .cal-entry{
+    font-size:0;line-height:0;height:5px;width:5px;border-radius:50%;
+    padding:0;margin:0 2px 2px 0;display:inline-block;overflow:hidden;
+    white-space:nowrap;
+  }
+  .cal-list{flex-direction:row;flex-wrap:wrap;gap:0;margin-top:1px;}
+  .cal-more{font-size:7.5px;margin-top:1px;}
 
   .admin-grid{gap:12px;}
   table{font-size:11.5px;}
@@ -441,6 +456,9 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 
 @media(max-width:420px){
   .stat{min-width:100%;}
+}
+@media(max-width:480px){
+  .cal-cell{min-height:50px;}
 }
 </style>
 </head>
@@ -864,6 +882,13 @@ function emptyDiser(){
     break30:{active:false,start:'12:00',end:'12:30'},
     history: []
   };
+  if(editingId && existingRecord){
+    const changes = diffMerchandiser(existingRecord, record);
+    record.history = existingHistory.concat(changes.length ? [{action:'updated', at:now, changes}] : []);
+    if(!changes.length) record.history = existingHistory; // no-op save, don't spam log
+  } else {
+    record.history = existingHistory.concat([{action:'created', at:now}]);
+  }
 }
 
 // ---- seed data, modeled loosely on the reference roster ----
@@ -1017,19 +1042,63 @@ function isRoving(d){ return d.shift==='ROVING'; }
 /* ============================================================
    HISTORY LOG
    ============================================================ */
+function diffMerchandiser(oldD, newD){
+  const changes = [];
+  const labels = {accessId:'Access ID', name:'Name', department:'Department', company:'Company', gondola:'Gondola', cutoff:'Cutoff', shift:'Shift'};
+  Object.keys(labels).forEach(f=>{
+    if(String(oldD[f]) !== String(newD[f])) changes.push({field:labels[f], from:oldD[f]||'—', to:newD[f]||'—'});
+  });
+  if(oldD.schedule.start!==newD.schedule.start || oldD.schedule.end!==newD.schedule.end){
+    changes.push({field:'Schedule', from:`${fmtTime(oldD.schedule.start)}–${fmtTime(oldD.schedule.end)}`, to:`${fmtTime(newD.schedule.start)}–${fmtTime(newD.schedule.end)}`});
+  }
+  const oldDays = DAYS.filter(d=>oldD.days[d]).join(', ') || 'None';
+  const newDays = DAYS.filter(d=>newD.days[d]).join(', ') || 'None';
+  if(oldDays!==newDays) changes.push({field:'Working Days', from:oldDays, to:newDays});
+
+  DAYS.forEach(day=>{
+    const o = oldD.perDay[day], n = newD.perDay[day];
+    const oStr = o.active ? `${fmtTime(o.start)}–${fmtTime(o.end)}` : 'Off';
+    const nStr = n.active ? `${fmtTime(n.start)}–${fmtTime(n.end)}` : 'Off';
+    if(oStr!==nStr) changes.push({field:`Roving – ${day}`, from:oStr, to:nStr});
+  });
+
+  const b1o = oldD.break1hr.active ? `${fmtTime(oldD.break1hr.start)}–${fmtTime(oldD.break1hr.end)}` : 'Off';
+  const b1n = newD.break1hr.active ? `${fmtTime(newD.break1hr.start)}–${fmtTime(newD.break1hr.end)}` : 'Off';
+  if(b1o!==b1n) changes.push({field:'1st Break', from:b1o, to:b1n});
+
+  const b2o = oldD.break30.active ? `${fmtTime(oldD.break30.start)}–${fmtTime(oldD.break30.end)}` : 'Off';
+  const b2n = newD.break30.active ? `${fmtTime(newD.break30.start)}–${fmtTime(newD.break30.end)}` : 'Off';
+  if(b2o!==b2n) changes.push({field:'2nd Break', from:b2o, to:b2n});
+
+  return changes;
+}
+  
 function showHistory(id){
   const d = merchandisers.find(m=>m.id===id);
   if(!d) return;
   document.getElementById('modalTitle').textContent = `${d.name} — History Log`;
   const entries = (d.history && d.history.length) ? d.history : [{action:'created', at: null}];
-  document.getElementById('modalBody').innerHTML = entries.slice().reverse().map(h=>`
-    <div class="roster-item">
-      <div class="who">
-        <b>${h.action==='created' ? 'Created' : 'Modified'}</b>
-        <small>${h.at ? new Date(h.at).toLocaleString() : 'Unknown date'}</small>
+  document.getElementById('modalBody').innerHTML = entries.slice().reverse().map(h=>{
+    const changesHtml = (h.changes && h.changes.length) ? `
+      <div style="margin-top:6px;padding-left:2px;">
+        ${h.changes.map(c=>`
+          <div style="font-size:11.5px;padding:3px 0;color:var(--ink-dim);">
+            <b style="color:var(--ink);">${c.field}:</b>
+            <span class="dim">${c.from}</span> → <span style="color:var(--accent);font-weight:600;">${c.to}</span>
+          </div>`).join('')}
+      </div>` : '';
+    return `
+    <div class="roster-item" style="align-items:flex-start;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        <div class="who">
+          <b>${h.action==='created' ? 'Created' : 'Modified'}</b>
+          <small>${h.at ? new Date(h.at).toLocaleString() : 'Unknown date'}</small>
+        </div>
+        <div><i class="fa-solid ${h.action==='created'?'fa-plus':'fa-pen'}" style="color:var(--ink-faint);"></i></div>
       </div>
-      <div><i class="fa-solid ${h.action==='created'?'fa-plus':'fa-pen'}" style="color:var(--ink-faint);"></i></div>
-    </div>`).join('');
+      ${changesHtml}
+    </div>`;
+  }).join('');
   document.getElementById('modalBg').classList.add('show');
 }
 
@@ -1281,9 +1350,9 @@ document.getElementById('diserForm').addEventListener('submit', e=>{
   if(!companies.includes(company)) companies.push(company);
   if(!gondolas.includes(gondola)) gondolas.push(gondola);
 
-  const existingHistory = editingId ? (merchandisers.find(m=>m.id===editingId).history || []) : [];
+  const existingRecord = editingId ? merchandisers.find(m=>m.id===editingId) : null;
+  const existingHistory = existingRecord ? (existingRecord.history || []) : [];
   const now = new Date().toISOString();
-  const newHistory = existingHistory.concat([{ action: editingId ? 'updated' : 'created', at: now }]);
 
   const record = {
     id: editingId || uid(),
