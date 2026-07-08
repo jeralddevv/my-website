@@ -1237,7 +1237,7 @@ document.getElementById('diserForm').addEventListener('submit', e=>{
   resetForm();
   renderList();
   refreshComboSources();
-  saveToServer(true);
+  saveToServer();
 });
 
 function loadIntoForm(d){
@@ -1593,7 +1593,7 @@ document.getElementById('signupForm').addEventListener('submit', async e=>{
     options:{ data:{ full_name: document.getElementById('signupName').value.trim() } }
   });
   if(error) return authMsg(error.message, 'err');
-  authMsg('Check your email to confirm your account.', 'ok');
+  // no confirmation needed — onAuthStateChange will fire and log them straight in
 });
 
 document.getElementById('forgotPasswordLink').addEventListener('click', e=>{
