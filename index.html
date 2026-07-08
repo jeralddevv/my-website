@@ -1629,17 +1629,30 @@ async function loadProfile(userId){
 }
 
 sb.auth.onAuthStateChange(async (event, session)=>{
-  console.log('AUTH EVENT:', event, session);
-  if(session && session.user){
-    currentUser = session.user;
-    await loadProfile(currentUser.id);
-    document.getElementById('authScreen').style.display = 'none';
-    document.querySelector('.app').style.display = 'flex';
-    loadFromServer();
-  } else {
-    currentUser = null;
-    document.getElementById('authScreen').style.display = 'flex';
-    document.querySelector('.app').style.display = 'none';
+  console.log('AUTH EVENT:', event, session ? 'has session' : 'no session');
+  try{
+    if(session && session.user){
+      currentUser = session.user;
+      console.log('Loading profile for', currentUser.id);
+      await loadProfile(currentUser.id);
+      console.log('Profile loaded, role:', currentRole);
+
+      const authEl = document.getElementById('authScreen');
+      const appEl = document.querySelector('.app');
+      console.log('authScreen found?', !!authEl, 'app found?', !!appEl);
+
+      authEl.style.display = 'none';
+      appEl.style.display = 'flex';
+      console.log('Display toggled — app should now be visible');
+
+      loadFromServer();
+    } else {
+      currentUser = null;
+      document.getElementById('authScreen').style.display = 'flex';
+      document.querySelector('.app').style.display = 'none';
+    }
+  } catch(err){
+    console.error('AUTH HANDLER CRASHED:', err);
   }
 });
 
