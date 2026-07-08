@@ -882,13 +882,6 @@ function emptyDiser(){
     break30:{active:false,start:'12:00',end:'12:30'},
     history: []
   };
-  if(editingId && existingRecord){
-    const changes = diffMerchandiser(existingRecord, record);
-    record.history = existingHistory.concat(changes.length ? [{action:'updated', at:now, changes}] : []);
-    if(!changes.length) record.history = existingHistory; // no-op save, don't spam log
-  } else {
-    record.history = existingHistory.concat([{action:'created', at:now}]);
-  }
 }
 
 // ---- seed data, modeled loosely on the reference roster ----
@@ -1373,15 +1366,19 @@ document.getElementById('diserForm').addEventListener('submit', e=>{
     const changes = diffMerchandiser(existingRecord, record);
     record.history = existingHistory.concat(changes.length ? [{action:'updated', at:now, changes}] : []);
     if(!changes.length) record.history = existingHistory;
+    const idx = merchandisers.findIndex(m=>m.id===editingId);
+    merchandisers[idx] = record;
+    toast('Merchandiser updated');
   } else {
     record.history = existingHistory.concat([{action:'created', at:now}]);
+    merchandisers.push(record);
+    toast('Merchandiser added');
   }
   resetForm();
   renderList();
   refreshComboSources();
-  saveToServer();
+  saveToServer(true);
 });
-
 function loadIntoForm(d){
   editingId = d.id;
   document.getElementById('formTitle').textContent = 'Edit Merchandiser';
