@@ -389,6 +389,59 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
   .perday-row{grid-template-columns:38px 74px 1fr 1fr;}
   .admin-grid{grid-template-columns:1fr;}
 }
+
+.sidebar-toggle{display:none;flex-shrink:0;}
+
+.sidebar-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(10,14,12,.45);z-index:59;
+}
+.sidebar-backdrop.show{display:block;}
+
+@media(max-width:860px){
+  .sidebar-toggle{display:inline-flex;}
+  .topbar{gap:12px;padding:14px 16px;}
+  .topbar h1{font-size:16px;}
+  .content{padding:16px 14px 50px;}
+
+  .sidebar{
+    position:fixed;top:0;left:0;height:100vh;z-index:60;
+    transform:translateX(-100%);transition:transform .2s ease;
+    box-shadow:0 0 0 rgba(0,0,0,0);
+  }
+  .sidebar.open{transform:translateX(0);box-shadow:8px 0 24px rgba(0,0,0,.18);}
+
+  .filters{padding:12px;gap:8px;}
+  .filters input[type="date"], .filters input[type="text"]{width:100%;}
+  .filters .divider{display:none;}
+  .pill-group{width:100%;}
+
+  .form-grid{padding:14px;gap:12px;}
+  .perday-row{grid-template-columns:34px 1fr;grid-template-areas:"label toggle" "in in" "out out";row-gap:6px;}
+  .perday-row .dlabel{grid-area:label;}
+  .perday-toggle{grid-area:toggle;justify-self:end;}
+  .perday-row input[data-timein]{grid-area:in;}
+  .perday-row input[data-timeout]{grid-area:out;}
+
+  .stat-row{gap:10px;}
+  .stat{min-width:44%;padding:12px;}
+  .stat .n{font-size:19px;}
+
+  .cal-cell{min-height:76px;padding:5px;}
+  .cal-entry{font-size:8.5px;}
+  .cal-legend{gap:8px;font-size:10.5px;padding:0 14px 12px;}
+
+  .admin-grid{gap:12px;}
+  table{font-size:11.5px;}
+  th,td{padding:7px 8px;}
+
+  .modal{max-width:94vw;}
+
+  .auth-card{padding:18px;}
+}
+
+@media(max-width:420px){
+  .stat{min-width:100%;}
+}
 </style>
 </head>
 <body data-theme="light">
@@ -469,10 +522,12 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
       </div>
     </div>
   </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
   <!-- MAIN -->
   <main class="main">
     <div class="topbar">
+      <button class="btn ghost sm sidebar-toggle" id="sidebarToggle"><i class="fa-solid fa-bars"></i></button>
       <div>
         <h1 id="pageTitle">Summary</h1>
         <div class="sub" id="pageSub">All merchandiser schedules at a glance</div>
@@ -877,6 +932,25 @@ themeSwitch.addEventListener('click', ()=>{
   const next = cur==='light' ? 'dark' : 'light';
   document.body.setAttribute('data-theme', next);
   themeLabel.textContent = next==='light' ? 'Light mode' : 'Dark mode';
+});
+
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+const sidebarEl = document.querySelector('.sidebar');
+
+function closeSidebar(){
+  sidebarEl.classList.remove('open');
+  sidebarBackdrop.classList.remove('show');
+}
+sidebarToggle.addEventListener('click', ()=>{
+  sidebarEl.classList.toggle('open');
+  sidebarBackdrop.classList.toggle('show');
+});
+sidebarBackdrop.addEventListener('click', closeSidebar);
+
+// auto-close on nav selection (mobile)
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click', closeSidebar);
 });
 
 /* ============================================================
