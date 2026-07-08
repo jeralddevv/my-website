@@ -780,6 +780,20 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 
         <div class="card" style="margin-bottom:18px;">
           <div class="section-title">
+            <h2>User Management <span class="count" id="userCount"></span></h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th></th>
+              </tr></thead>
+              <tbody id="userListBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:18px;">
+          <div class="section-title">
             <h2>Manage Records <span class="count" id="adminRecCount"></span></h2>
           </div>
           <div class="table-wrap">
@@ -992,7 +1006,7 @@ document.querySelectorAll('.nav-item').forEach(item=>{
     if(v==='summary') renderSummary();
     if(v==='merchandiser') renderList();
     if(v==='calendar') renderCalendar();
-    if(v==='admin') renderAdmin();
+    if(v==='admin'){ renderAdmin(); loadAndRenderUsers(); }
     if(v==='archive') renderArchive();
   });
 });
@@ -1552,6 +1566,46 @@ document.getElementById('adminAddGondola').addEventListener('click', ()=>{
   inp.value=''; renderAdmin(); saveToServer(true);
 });
 function refreshComboSources(){ /* combos read live arrays already */ }
+
+  async function loadAndRenderUsers(){
+  try{
+    const { data, error } = await sb.from('profiles').select('id, email, display_name, role, created_at').order('created_at', {ascending:false});
+    if(error) throw error;
+    document.getElementById('userCount').textContent = `${data.length} user${data.length===1?'':'s'}`;
+    document.getElementById('userListBody').innerHTML = data.length ? data.map(u=>`
+      <tr>
+        <td class="name-cell">${u.display_name || '—'}</td>
+        <td class="dim">${u.email || '—'}</td>
+        <td>
+          <span class="badge ${u.role==='admin'?'closing':'mid'}">${u.role}</span>
+        </td>
+        <td class="dim">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+        <td style="text-align:right;">
+          ${u.id===currentUser.id
+            ? '<span class="dim" style="font-size:11.5px;">You</span>'
+            : `<button class="btn sm ghost" onclick="toggleUserRole('${u.id}','${u.role}')">
+                 Make ${u.role==='admin' ? 'Employee' : 'Admin'}
+               </button>`
+          }
+        </td>
+      </tr>`).join('') : `<tr class="empty-row"><td colspan="5">No users found.</td></tr>`;
+  }catch(err){
+    document.getElementById('userListBody').innerHTML = `<tr class="empty-row"><td colspan="5">Could not load users: ${err.message}</td></tr>`;
+  }
+}
+
+async function toggleUserRole(userId, currentRoleVal){
+  const newRole = currentRoleVal==='admin' ? 'employee' : 'admin';
+  if(!confirm(`Change this user's role to "${newRole}"?`)) return;
+  try{
+    const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
+    if(error) throw error;
+    toast('Role updated');
+    loadAndRenderUsers();
+  }catch(err){
+    toast('Failed to update role: ' + err.message);
+  }
+}
 
 /* ---- server sync (load/save JSON via this same PHP file) ---- */
 const SYNC_URL = window.location.pathname;
