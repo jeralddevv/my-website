@@ -103,8 +103,9 @@ button{font-family:inherit;}
 }
 .brand-mark{
   width:30px;height:30px;border-radius:8px;
-  background:linear-gradient(135deg,var(--shift-opening),var(--shift-mid) 35%,var(--shift-closing) 70%,var(--shift-roving));
+  object-fit:cover;
   flex-shrink:0;
+  background:var(--bg-sunken); /* shows briefly while image loads */
 }
 .brand-text{font-family:var(--font-display);font-weight:700;font-size:16px;letter-spacing:-.02em;}
 .brand-sub{font-size:10.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.08em;margin-top:1px;}
@@ -478,7 +479,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 <div id="authScreen" class="auth-screen">
   <div class="auth-card">
     <div class="brand" style="justify-content:center;border:none;padding-bottom:6px;">
-      <div class="brand-mark"></div>
+      <img src="assets/logo.png" alt="Roster" class="brand-mark">
       <div><div class="brand-text">Roster</div><div class="brand-sub">Merchandiser Ops</div></div>
     </div>
     <div id="authTabs" class="auth-tabs">
@@ -511,7 +512,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark"></div>
+      <img src="assets/logo.png" alt="Roster" class="brand-mark">
       <div>
         <div class="brand-text">Roster</div>
         <div class="brand-sub">Merchandiser Ops</div>
