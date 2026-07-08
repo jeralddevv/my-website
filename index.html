@@ -269,9 +269,12 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 .break-block input[type="time"]{width:auto;flex:1;}
 .break-block .pill.selected{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
 .day-btn{
-  width:40px;height:36px;border-radius:8px;border:1px solid var(--line-strong);background:var(--bg);
+  width:44px;height:38px;border-radius:8px;border:1px solid var(--line-strong);background:var(--bg);
   color:var(--ink-dim);font-weight:700;font-size:11.5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .12s;
 }
+.day-btn:hover{border-color:var(--ink-faint);color:var(--ink);}
 .day-btn.selected{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
 
 .perday-grid{display:flex;flex-direction:column;gap:8px;}
