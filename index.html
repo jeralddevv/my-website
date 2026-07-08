@@ -1366,16 +1366,15 @@ document.getElementById('diserForm').addEventListener('submit', e=>{
     perDay: JSON.parse(JSON.stringify(perDayState)),
     break1hr: {...break1hrState},
     break30: {...break30State},
-    history: newHistory
+    history: []
   };
 
-  if(editingId){
-    const idx = merchandisers.findIndex(m=>m.id===editingId);
-    merchandisers[idx] = record;
-    toast('Merchandiser updated');
+  if(editingId && existingRecord){
+    const changes = diffMerchandiser(existingRecord, record);
+    record.history = existingHistory.concat(changes.length ? [{action:'updated', at:now, changes}] : []);
+    if(!changes.length) record.history = existingHistory;
   } else {
-    merchandisers.push(record);
-    toast('Merchandiser added');
+    record.history = existingHistory.concat([{action:'created', at:now}]);
   }
   resetForm();
   renderList();
