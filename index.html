@@ -1082,12 +1082,9 @@ function showHistory(id){
       </div>` : '';
     return `
     <div class="roster-item" style="align-items:flex-start;flex-direction:column;">
-      <div style="display:flex;justify-content:space-between;width:100%;">
-        <div class="who">
-          <b>${h.action==='created' ? 'Created' : 'Modified'}</b>
-          <small>${h.at ? new Date(h.at).toLocaleString() : 'Unknown date'}</small>
-        </div>
-        <div><i class="fa-solid ${h.action==='created'?'fa-plus':'fa-pen'}" style="color:var(--ink-faint);"></i></div>
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+        <b>${h.action==='created' ? 'Created' : 'Modified'}</b>
+        <small class="dim">${h.at ? new Date(h.at).toLocaleString() : 'Unknown date'}</small>
       </div>
       ${changesHtml}
     </div>`;
