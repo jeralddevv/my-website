@@ -1978,8 +1978,15 @@ async function toggleUserRole(userId, currentRoleVal){
   const newRole = currentRoleVal==='admin' ? 'employee' : 'admin';
   if(!confirm(`Change this user's role to "${newRole}"?`)) return;
   try{
-    const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
+    const { data, error } = await sb.from('profiles')
+      .update({ role: newRole })
+      .eq('id', userId)
+      .select();
     if(error) throw error;
+    if(!data || !data.length){
+      toast('Role not saved — likely blocked by a Supabase RLS policy on "profiles"');
+      return;
+    }
     toast('Role updated');
     loadAndRenderUsers();
   }catch(err){
@@ -2150,16 +2157,19 @@ let currentUser = null, currentRole = 'employee';
 
 document.getElementById('authTabs').addEventListener('click', e=>{
   const t = e.target.closest('.auth-tab'); if(!t) return;
-  document.querySelectorAll('.auth-tab').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active');
-  document.getElementById('loginForm').style.display = t.dataset.tab==='login' ? 'block':'none';
-  document.getElementById('signupForm').style.display = t.dataset.tab==='signup' ? 'block':'none';
-  document.getElementById('forgotForm').style.display = 'none';
+  showAuthForm(t.dataset.tab);
   authMsg('');
 });
 function authMsg(text, tone){
   const el = document.getElementById('authMsg');
   el.textContent = text; el.className = 'auth-msg' + (tone?' '+tone:'');
+}
+function showAuthForm(which){
+  document.getElementById('loginForm').style.display = which==='login' ? 'block':'none';
+  document.getElementById('signupForm').style.display = which==='signup' ? 'block':'none';
+  document.getElementById('forgotForm').style.display = which==='forgot' ? 'block':'none';
+  document.getElementById('otpForm').style.display = which==='otp' ? 'block':'none';
+  document.querySelectorAll('.auth-tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===which));
 }
 
 document.getElementById('loginForm').addEventListener('submit', async e=>{
@@ -2176,18 +2186,21 @@ let pendingSignupEmail = null;
 document.getElementById('signupForm').addEventListener('submit', async e=>{
   e.preventDefault();
   const email = document.getElementById('signupEmail').value.trim();
-  const { error } = await sb.auth.signUp({
+  const { data, error } = await sb.auth.signUp({
     email,
     password: document.getElementById('signupPassword').value,
     options:{ data:{ full_name: document.getElementById('signupName').value.trim() } }
   });
   if(error) return authMsg(error.message, 'err');
 
+  // Safety net: if Supabase handed back an active session (e.g. confirmations
+  // were briefly off), kill it so the app can't show before OTP is verified.
+  if(data.session){
+    await sb.auth.signOut();
+  }
+
   pendingSignupEmail = email;
-  document.getElementById('signupForm').style.display='none';
-  document.getElementById('loginForm').style.display='none';
-  document.getElementById('forgotForm').style.display='none';
-  document.getElementById('otpForm').style.display='block';
+  showAuthForm('otp');
   authMsg('We sent a verification code to ' + email, 'ok');
 });
 
@@ -2202,7 +2215,6 @@ document.getElementById('otpForm').addEventListener('submit', async e=>{
   if(error) return authMsg(error.message, 'err');
 
   toast('Account verified — welcome!');
-  document.getElementById('otpForm').style.display='none';
   authMsg('', null);
   // onAuthStateChange fires automatically here and logs the user in
 });
@@ -2217,14 +2229,11 @@ document.getElementById('resendOtpLink').addEventListener('click', async e=>{
 
 document.getElementById('forgotPasswordLink').addEventListener('click', e=>{
   e.preventDefault();
-  document.getElementById('loginForm').style.display='none';
-  document.getElementById('signupForm').style.display='none';
-  document.getElementById('forgotForm').style.display='block';
+  showAuthForm('forgot');
 });
 document.getElementById('backToLoginLink').addEventListener('click', e=>{
   e.preventDefault();
-  document.getElementById('forgotForm').style.display='none';
-  document.getElementById('loginForm').style.display='block';
+  showAuthForm('login');
 });
 document.getElementById('forgotForm').addEventListener('submit', async e=>{
   e.preventDefault();
@@ -2266,6 +2275,9 @@ sb.auth.onAuthStateChange(async (event, session)=>{
     } else {
       currentUser = null;
       clearTimeout(idleTimer);
+      pendingSignupEmail = null;
+      showAuthForm('login');
+      authMsg('', null);
       document.getElementById('authScreen').style.display = 'flex';
       document.querySelector('.app').style.display = 'none';
     }
