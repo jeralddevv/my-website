@@ -2191,7 +2191,12 @@ document.getElementById('signupForm').addEventListener('submit', async e=>{
     password: document.getElementById('signupPassword').value,
     options:{ data:{ full_name: document.getElementById('signupName').value.trim() } }
   });
-  if(error) return authMsg(error.message, 'err');
+  if(error){
+    const msg = error.code === 'unexpected_failure'
+      ? 'Could not send verification email — email service is misconfigured. Please contact the admin.'
+      : (error.message || 'Something went wrong creating your account.');
+    return authMsg(msg, 'err');
+  }
 
   // Safety net: if Supabase handed back an active session (e.g. confirmations
   // were briefly off), kill it so the app can't show before OTP is verified.
