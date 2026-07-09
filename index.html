@@ -503,6 +503,14 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
       <button type="submit" class="btn primary" style="width:100%;justify-content:center;">Send Reset Link</button>
       <div class="auth-links"><a href="#" id="backToLoginLink">Back to log in</a></div>
     </form>
+    <form id="otpForm" class="auth-form" style="display:none;">
+      <div class="field">
+        <label>Verification Code</label>
+        <input type="text" id="otpCode" required maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="Enter the code from your email" autocomplete="one-time-code">
+      </div>
+      <button type="submit" class="btn primary" style="width:100%;justify-content:center;">Verify & Continue</button>
+      <div class="auth-links"><a href="#" id="resendOtpLink">Resend code</a></div>
+    </form>
     <div id="authMsg" class="auth-msg"></div>
   </div>
 </div>
@@ -2124,6 +2132,20 @@ document.getElementById('clearAllBtn').addEventListener('click', ()=>{
 });
 document.getElementById('saveNowBtn').addEventListener('click', ()=>saveToServer());
 
+const IDLE_LIMIT_MS = 30 * 60 * 1000;
+let idleTimer = null;
+function resetIdleTimer(){
+  if(!currentUser) return;
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(async ()=>{
+    await sb.auth.signOut();
+    toast('Signed out after 30 minutes of inactivity');
+  }, IDLE_LIMIT_MS);
+}
+['mousemove','mousedown','keydown','scroll','touchstart','click'].forEach(evt=>{
+  document.addEventListener(evt, resetIdleTimer, {passive:true});
+});
+
 let currentUser = null, currentRole = 'employee';
 
 document.getElementById('authTabs').addEventListener('click', e=>{
@@ -2149,6 +2171,8 @@ document.getElementById('loginForm').addEventListener('submit', async e=>{
   if(error) authMsg(error.message, 'err');
 });
 
+let pendingSignupEmail = null;
+
 document.getElementById('signupForm').addEventListener('submit', async e=>{
   e.preventDefault();
   const email = document.getElementById('signupEmail').value.trim();
@@ -2159,10 +2183,36 @@ document.getElementById('signupForm').addEventListener('submit', async e=>{
   });
   if(error) return authMsg(error.message, 'err');
 
-  await sb.auth.signOut();
-  document.querySelector('.auth-tab[data-tab="login"]').click();
-  document.getElementById('loginEmail').value = email;
-  authMsg('Account created — please log in.', 'ok');
+  pendingSignupEmail = email;
+  document.getElementById('signupForm').style.display='none';
+  document.getElementById('loginForm').style.display='none';
+  document.getElementById('forgotForm').style.display='none';
+  document.getElementById('otpForm').style.display='block';
+  authMsg('We sent a verification code to ' + email, 'ok');
+});
+
+document.getElementById('otpForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const code = document.getElementById('otpCode').value.trim();
+  const { error } = await sb.auth.verifyOtp({
+    email: pendingSignupEmail,
+    token: code,
+    type: 'signup'
+  });
+  if(error) return authMsg(error.message, 'err');
+
+  toast('Account verified — welcome!');
+  document.getElementById('otpForm').style.display='none';
+  authMsg('', null);
+  // onAuthStateChange fires automatically here and logs the user in
+});
+
+document.getElementById('resendOtpLink').addEventListener('click', async e=>{
+  e.preventDefault();
+  if(!pendingSignupEmail) return;
+  const { error } = await sb.auth.resend({ type:'signup', email: pendingSignupEmail });
+  if(error) return authMsg(error.message, 'err');
+  authMsg('New code sent to ' + pendingSignupEmail, 'ok');
 });
 
 document.getElementById('forgotPasswordLink').addEventListener('click', e=>{
@@ -2212,8 +2262,10 @@ sb.auth.onAuthStateChange(async (event, session)=>{
       console.log('Display toggled — app should now be visible');
 
       loadFromServer();
+      resetIdleTimer();
     } else {
       currentUser = null;
+      clearTimeout(idleTimer);
       document.getElementById('authScreen').style.display = 'flex';
       document.querySelector('.app').style.display = 'none';
     }
