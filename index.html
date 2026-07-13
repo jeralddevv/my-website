@@ -322,6 +322,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 .cal-cell:hover{background:var(--bg-sunken);}
 .cal-cell.other-month{opacity:.35;}
 .cal-cell.today{background:var(--accent-soft);}
+.cal-cell.selected-day{box-shadow:inset 0 0 0 2px var(--accent);}
 .cal-date{font-size:12px;font-weight:700;margin-bottom:5px;}
 .cal-list{display:flex;flex-direction:column;gap:2px;margin-top:2px;}
 .cal-entry{
@@ -934,6 +935,9 @@ let archives = [];
 let directory = [];
 let overrides = {}; 
 let lastOverrideChange = null;
+let mdShiftFilter = 'ALL';
+let mdCutoffFilter = 'ALL';
+let mdIso = null, mdWd = null;
   
 function ovKey(id, dateISO){ return `${id}__${dateISO}`; }
 
@@ -1642,16 +1646,21 @@ function renderCalendar(){
   document.querySelectorAll('.cal-cell').forEach(c=>c.addEventListener('click', ()=>{
     openDayModal(c.dataset.date, c.dataset.wd);
     updateCalLegendCounts(c.dataset.date, c.dataset.wd);
+    document.querySelectorAll('.cal-cell.selected-day').forEach(x=>x.classList.remove('selected-day'));
+    c.classList.add('selected-day');
   }));
 
   const todayCell = document.querySelector('.cal-cell.today');
   if(todayCell){
     updateCalLegendCounts(todayCell.dataset.date, todayCell.dataset.wd);
+    todayCell.classList.add('selected-day');
   } else {
     // viewing a month without "today" in it — show counts for the 1st of the shown month
     const firstIso = localISODate(new Date(year, month, 1));
     const firstWd = DAYS[(new Date(year, month, 1).getDay()+6)%7];
     updateCalLegendCounts(firstIso, firstWd);
+    const firstCell = document.querySelector(`.cal-cell[data-date="${firstIso}"]`);
+    if(firstCell) firstCell.classList.add('selected-day');
   }
 }
 
@@ -1675,12 +1684,42 @@ function updateCalLegendCounts(iso, wd){
   }
 }
 
-function openDayModal(iso, wd){
-  const staff = staffOnDate(iso, wd);
-  const offList = merchandisers.filter(d=>!staff.includes(d));
-  const dt = new Date(iso+'T00:00:00');
-  document.getElementById('modalTitle').textContent = dt.toLocaleDateString('default',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  document.getElementById('modalBody').innerHTML = `
+function mdMatchesFilters(d, iso, wd){
+  const q = (document.getElementById('mdSearch')?.value || '').trim().toLowerCase();
+  if(q && !(d.name.toLowerCase().includes(q) || String(d.accessId).toLowerCase().includes(q))) return false;
+  if(mdCutoffFilter!=='ALL' && d.cutoff!==mdCutoffFilter) return false;
+  if(mdShiftFilter!=='ALL'){
+    const eff = effectiveForDate(d, iso, wd);
+    if(eff.shift!==mdShiftFilter) return false;
+  }
+  return true;
+}
+
+function renderDayModalRoster(){
+  const iso = mdIso, wd = mdWd;
+  if(!iso) return;
+  const allStaffToday = staffOnDate(iso, wd);
+  const staff = allStaffToday.filter(d=>mdMatchesFilters(d, iso, wd));
+  const q = (document.getElementById('mdSearch')?.value || '').trim().toLowerCase();
+  const offList = merchandisers.filter(d=>!allStaffToday.includes(d)).filter(d=>{
+    if(q && !(d.name.toLowerCase().includes(q) || String(d.accessId).toLowerCase().includes(q))) return false;
+    if(mdCutoffFilter!=='ALL' && d.cutoff!==mdCutoffFilter) return false;
+    return true;
+  });
+
+  const counts = {OPENING:0, MID:0, CLOSING:0, ROVING:0, HALFDAY:0, AWOL:0};
+  allStaffToday.forEach(d=>{
+    const eff = effectiveForDate(d, iso, wd);
+    if(counts.hasOwnProperty(eff.shift)) counts[eff.shift]++;
+  });
+  Object.keys(counts).forEach(k=>{
+    const el = document.getElementById('mdCount'+k);
+    if(el) el.textContent = counts[k];
+  });
+  const totalEl = document.getElementById('mdCountTOTAL');
+  if(totalEl) totalEl.textContent = allStaffToday.length;
+
+  document.getElementById('mdRosterWrap').innerHTML = `
     <div>
       ${staff.length ? staff.map(d=>{
         const eff = effectiveForDate(d, iso, wd);
@@ -1694,7 +1733,7 @@ function openDayModal(iso, wd){
             <button class="btn sm ghost" onclick="openOverrideEditor('${d.id}','${iso}','${wd}')" title="Edit this date"><i class="fa-solid fa-pen"></i></button>
           </div>
         </div>`;
-      }).join('') : '<div class="dim" style="text-align:center;padding:14px;">Nobody scheduled this day.</div>'}
+      }).join('') : '<div class="dim" style="text-align:center;padding:14px;">Nobody matches these filters.</div>'}
     </div>
     ${offList.length ? `<div style="margin-top:14px;">
       <div style="font-size:11px;font-weight:700;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Off today — tap to bring in</div>
@@ -1704,8 +1743,64 @@ function openDayModal(iso, wd){
       </div>`).join('')}
     </div>` : ''}
   `;
+}
+
+function openDayModal(iso, wd){
+  mdIso = iso; mdWd = wd;
+  const dt = new Date(iso+'T00:00:00');
+  document.getElementById('modalTitle').textContent = dt.toLocaleDateString('default',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="cal-legend" style="padding:0 0 12px;border-bottom:1px solid var(--line);margin-bottom:12px;flex-wrap:wrap;">
+      <span><span class="cal-dot" style="background:var(--shift-opening)"></span>Opening <b id="mdCountOPENING" class="mono">0</b></span>
+      <span><span class="cal-dot" style="background:var(--shift-mid)"></span>Mid <b id="mdCountMID" class="mono">0</b></span>
+      <span><span class="cal-dot" style="background:var(--shift-closing)"></span>Closing <b id="mdCountCLOSING" class="mono">0</b></span>
+      <span><span class="cal-dot" style="background:var(--shift-roving)"></span>Roving <b id="mdCountROVING" class="mono">0</b></span>
+      <span><span class="cal-dot" style="background:var(--shift-halfday)"></span>Halfday <b id="mdCountHALFDAY" class="mono">0</b></span>
+      <span><span class="cal-dot" style="background:var(--shift-awol)"></span>AWOL <b id="mdCountAWOL" class="mono">0</b></span>
+      <span style="margin-left:auto;font-weight:700;">Present: <b id="mdCountTOTAL" class="mono">0</b></span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+      <div class="pill-group" id="mdShiftFilters">
+        <div class="pill on-all ${mdShiftFilter==='ALL'?'selected':''}" data-shift="ALL">All</div>
+        <div class="pill on-opening ${mdShiftFilter==='OPENING'?'selected':''}" data-shift="OPENING">Opening</div>
+        <div class="pill on-mid ${mdShiftFilter==='MID'?'selected':''}" data-shift="MID">Mid</div>
+        <div class="pill on-closing ${mdShiftFilter==='CLOSING'?'selected':''}" data-shift="CLOSING">Closing</div>
+        <div class="pill on-roving ${mdShiftFilter==='ROVING'?'selected':''}" data-shift="ROVING">Roving</div>
+        <div class="pill on-awol ${mdShiftFilter==='AWOL'?'selected':''}" data-shift="AWOL">AWOL</div>
+      </div>
+      <div class="pill-group" id="mdCutoffFilters">
+        <div class="pill on-all ${mdCutoffFilter==='ALL'?'selected':''}" data-cutoff="ALL">All Cutoffs</div>
+        <div class="pill on-cutoff1 ${mdCutoffFilter==='1-15'?'selected':''}" data-cutoff="1-15">1–15</div>
+        <div class="pill on-cutoff2 ${mdCutoffFilter==='16-31'?'selected':''}" data-cutoff="16-31">16–31</div>
+      </div>
+      <input type="text" id="mdSearch" placeholder="Search name or access ID…" style="width:100%;">
+    </div>
+
+    <div id="mdRosterWrap"></div>
+  `;
+
+  document.getElementById('mdShiftFilters').addEventListener('click', e=>{
+    const p = e.target.closest('.pill'); if(!p) return;
+    document.querySelectorAll('#mdShiftFilters .pill').forEach(x=>x.classList.remove('selected'));
+    p.classList.add('selected');
+    mdShiftFilter = p.dataset.shift;
+    renderDayModalRoster();
+  });
+  document.getElementById('mdCutoffFilters').addEventListener('click', e=>{
+    const p = e.target.closest('.pill'); if(!p) return;
+    document.querySelectorAll('#mdCutoffFilters .pill').forEach(x=>x.classList.remove('selected'));
+    p.classList.add('selected');
+    mdCutoffFilter = p.dataset.cutoff;
+    renderDayModalRoster();
+  });
+  document.getElementById('mdSearch').addEventListener('input', renderDayModalRoster);
+
+  renderDayModalRoster();
   document.getElementById('modalBg').classList.add('show');
 }
+
 document.getElementById('modalClose').addEventListener('click', ()=>document.getElementById('modalBg').classList.remove('show'));
 document.getElementById('modalBg').addEventListener('click', e=>{ if(e.target.id==='modalBg') e.currentTarget.classList.remove('show'); });
 
@@ -1846,7 +1941,7 @@ function quickToggleAwol(id, iso, wd){
   lastOverrideChange = { key, prevExisted, prevValue, historyOwnerId: d.id };
   updateRevertButton();
 
-  openDayModal(iso, wd);
+  renderDayModalRoster();
   renderCalendar();
   saveToServer(true);
   toast(isAwol ? `${d.name} unmarked AWOL` : `${d.name} marked AWOL for ${iso}`);
