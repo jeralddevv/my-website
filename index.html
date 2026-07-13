@@ -35,6 +35,8 @@
   --shift-roving-soft:#efe2f2;
   --shift-halfday:#b5457a;
   --shift-halfday-soft:#f5e1ec;
+  --shift-awol:#b5432f;
+  --shift-awol-soft:#f6e4df;
 
   --radius:10px;
   --sidebar-w:230px;
@@ -69,6 +71,8 @@
   --shift-roving-soft:#2c2032;
   --shift-halfday:#d685ac;
   --shift-halfday-soft:#33202b;
+  --shift-awol:#e08064;
+  --shift-awol-soft:#3a2320; 
 }
 
 *{box-sizing:border-box;}
@@ -186,6 +190,7 @@ button{font-family:inherit;}
 .pill.on-halfday.selected{background:var(--shift-halfday-soft);border-color:var(--shift-halfday);color:var(--shift-halfday);}
 .pill.on-all.selected{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
 .pill.on-none.selected{background:var(--danger-soft);border-color:var(--danger);color:var(--danger);}
+.pill.on-awol.selected{background:var(--shift-awol-soft);border-color:var(--shift-awol);color:var(--shift-awol);}
 .pill.on-cutoff1.selected{background:var(--shift-opening-soft);border-color:var(--shift-opening);color:var(--shift-opening);}
 .pill.on-cutoff2.selected{background:var(--shift-closing-soft);border-color:var(--shift-closing);color:var(--shift-closing);}
 
@@ -213,6 +218,7 @@ button{font-family:inherit;}
 .badge.closing{background:var(--shift-closing-soft);color:var(--shift-closing);}
 .badge.roving{background:var(--shift-roving-soft);color:var(--shift-roving);}
 .badge.halfday{background:var(--shift-halfday-soft);color:var(--shift-halfday);}
+.badge.awol{background:var(--shift-awol-soft);color:var(--shift-awol);}
 
 /* ---------- tables ---------- */
 .table-wrap{overflow-x:auto;}
@@ -327,6 +333,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
 .cal-entry.closing{background:var(--shift-closing-soft);color:var(--shift-closing);}
 .cal-entry.roving{background:var(--shift-roving-soft);color:var(--shift-roving);}
 .cal-entry.halfday{background:var(--shift-halfday-soft);color:var(--shift-halfday);}
+.cal-entry.awol{background:var(--shift-awol-soft);color:var(--shift-awol);}
 .cal-more{font-size:10px;color:var(--ink-faint);margin-top:3px;}
 .cal-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
 /* ---------- modal ---------- */
@@ -586,6 +593,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
               <div class="pill on-mid" data-shift="MID">Mid</div>
               <div class="pill on-closing" data-shift="CLOSING">Closing</div>
               <div class="pill on-roving" data-shift="ROVING">Roving</div>
+              <div class="pill on-awol" data-shift="AWOL">AWOL</div>
             </div>
             <div class="divider"></div>
             <div class="pill-group" id="sumCutoffFilters">
@@ -774,6 +782,7 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
             <span><span class="cal-dot" style="background:var(--shift-closing)"></span>Closing</span>
             <span><span class="cal-dot" style="background:var(--shift-roving)"></span>Roving</span>
             <span><span class="cal-dot" style="background:var(--shift-halfday)"></span>Halfday</span>
+            <span><span class="cal-dot" style="background:var(--shift-awol)"></span>AWOL</span>
           </div>
           <div class="cal-grid" id="calGrid"></div>
         </div>
@@ -914,8 +923,8 @@ function localISODate(date){
 }
    
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const SHIFT_LABEL = {OPENING:'Opening',MID:'Mid',CLOSING:'Closing',ROVING:'Roving',HALFDAY:'Halfday'};
-const SHIFT_ICON = {OPENING:'fa-sun',MID:'fa-clock',CLOSING:'fa-moon',ROVING:'fa-person-walking',HALFDAY:'fa-hourglass-half'};
+const SHIFT_LABEL = {OPENING:'Opening',MID:'Mid',CLOSING:'Closing',ROVING:'Roving',HALFDAY:'Halfday',AWOL:'AWOL'};
+const SHIFT_ICON = {OPENING:'fa-sun',MID:'fa-clock',CLOSING:'fa-moon',ROVING:'fa-person-walking',HALFDAY:'fa-hourglass-half',AWOL:'fa-user-slash'};
 
 let companies = ["BENBY","ZUELLIG","UNILEVER","GREENCROSS","P&G","COLGATE-PALMOLIVE","UNILAB","SAMICARE","MCKENZIE","JS UNITRADE (EQ)","SANOFI PHIL / BEVI","CHEMMITCH","J&J","PHILUSA","SC JOHNSON","HUMAN NATURE","COMARK","LST SUMMIT","FUTURE GLOW","JOYTIS","EVER BILENA","IPI","FIBERLINE","GSK/HENRE"];
 let gondolas = ["16","17","18","19","20","21","22","23","24","25","BRAND SHOP","SHOP IN SHOP","COC","FACE CARE"];
@@ -937,6 +946,7 @@ function effectiveForDate(d, dateISO, wd){
   };
   if(!ov) return baseFull;
   if(ov.status==='off') return {...baseFull, active:false, overridden:true, note:ov.note};
+  if(ov.status==='awol') return {...baseFull, active:true, shift:'AWOL', overridden:true, note:ov.note};
   if(ov.status==='custom'){
     return {
       active:true,
@@ -1173,6 +1183,7 @@ function showHistory(id){
         <b>${h.action==='created' ? 'Created' : h.action==='date-override' ? 'Schedule Adjusted' : 'Modified'}</b>
         <small class="dim">${h.at ? new Date(h.at).toLocaleString() : 'Unknown date'}</small>
       </div>
+      <small class="dim" style="margin-top:2px;">Updated by: ${h.by || 'Unknown'}</small>
       ${changesHtml}
     </div>`;
   }).join('');
@@ -1209,10 +1220,19 @@ function weekdayOf(dateStr){
   return DAYS[(idx+6)%7];
 }
 
+function awolFilterDate(){
+  return sumDateVal || localISODate(new Date());
+}
+
 function matchesFilters(d){
   const q = document.getElementById('sumSearch').value.trim().toLowerCase();
   if(q && !(d.name.toLowerCase().includes(q) || String(d.accessId).toLowerCase().includes(q))) return false;
-  if(sumShiftFilter!=='ALL' && d.shift!==sumShiftFilter) return false;
+  if(sumShiftFilter==='AWOL'){
+    const dateISO = awolFilterDate();
+    const wd = weekdayOf(dateISO);
+    const eff = effectiveForDate(d, dateISO, wd);
+    if(eff.shift!=='AWOL') return false;
+  } else if(sumShiftFilter!=='ALL' && d.shift!==sumShiftFilter) return false;
   if(sumCutoffFilter!=='ALL' && d.cutoff!==sumCutoffFilter) return false;
   if(sumDateVal){
     const wd = weekdayOf(sumDateVal);
@@ -1233,19 +1253,21 @@ function renderSummary(){
   document.getElementById('stationaryCount').textContent = `${stationary.length} people`;
   document.getElementById('rovingCount').textContent = `${roving.length} people`;
 
-  document.getElementById('stationaryBody').innerHTML = stationary.length ? stationary.map(d=>`
+  document.getElementById('stationaryBody').innerHTML = stationary.length ? stationary.map(d=>{
+    const badgeShift = (sumShiftFilter==='AWOL') ? 'AWOL' : d.shift;
+    return `
     <tr>
       <td class="mono dim">${d.accessId}</td>
       <td class="name-cell">${d.name}</td>
       <td>${d.company}</td>
       <td class="dim">${d.department}</td>
       <td class="mono dim">${cutoffLabel(d.cutoff)}</td>
-      <td>${shiftBadge(d.shift)}</td>
+      <td>${shiftBadge(badgeShift)}</td>
       <td class="mono">${fmtTime(d.schedule.start)}–${fmtTime(d.schedule.end)}</td>
       <td>${d.gondola}</td>
       <td>${breakLabel(d)}</td>
       <td>${daysMini(d.days)}</td>
-    </tr>`).join('') : `<tr class="empty-row"><td colspan="10">No stationary staff match these filters.</td></tr>`;
+    </tr>`;}).join('') : `<tr class="empty-row"><td colspan="10">No stationary staff match these filters.</td></tr>`;
 
   document.getElementById('rovingBody').innerHTML = roving.length ? roving.map(d=>`
     <tr>
@@ -1495,13 +1517,13 @@ document.getElementById('diserForm').addEventListener('submit', e=>{
 
   if(editingId && existingRecord){
     const changes = diffMerchandiser(existingRecord, record);
-    record.history = existingHistory.concat(changes.length ? [{action:'updated', at:now, changes}] : []);
+    record.history = existingHistory.concat(changes.length ? [{action:'updated', at:now, by:whoAmI(), changes}] : []);
     if(!changes.length) record.history = existingHistory;
     const idx = merchandisers.findIndex(m=>m.id===editingId);
     merchandisers[idx] = record;
     toast('Merchandiser updated');
   } else {
-    record.history = existingHistory.concat([{action:'created', at:now}]);
+    record.history = existingHistory.concat([{action:'created', at:now, by:whoAmI()}]);
     merchandisers.push(record);
     toast('Merchandiser added');
   }
@@ -1627,10 +1649,12 @@ function openDayModal(iso, wd){
     <div>
       ${staff.length ? staff.map(d=>{
         const eff = effectiveForDate(d, iso, wd);
+        const isAwol = eff.shift==='AWOL';
         return `<div class="roster-item">
           <div class="who"><b>${d.name}</b><small>${d.company} · Gondola ${d.gondola}${eff.overridden?' · <span style="color:var(--accent);font-weight:700;">Adjusted</span>':''}</small></div>
           <div style="text-align:right;display:flex;align-items:center;gap:8px;">
-            <div>${shiftBadge(eff.shift, isRoving(d)?'Roving':'')}<div class="mono dim" style="font-size:11.5px;margin-top:4px;">${fmtTime(eff.start)}–${fmtTime(eff.end)}</div></div>
+            <div>${shiftBadge(eff.shift, isRoving(d) && eff.shift!=='AWOL' ?'Roving':'')}<div class="mono dim" style="font-size:11.5px;margin-top:4px;">${fmtTime(eff.start)}–${fmtTime(eff.end)}</div></div>
+            <button class="btn sm ${isAwol?'danger':'ghost'}" onclick="quickToggleAwol('${d.id}','${iso}','${wd}')" title="${isAwol?'Unmark AWOL':'Mark AWOL'}"><i class="fa-solid fa-user-slash"></i></button>
             <button class="btn sm ghost" onclick="showHistory('${d.id}')" title="History"><i class="fa-solid fa-clock-rotate-left"></i></button>
             <button class="btn sm ghost" onclick="openOverrideEditor('${d.id}','${iso}','${wd}')" title="Edit this date"><i class="fa-solid fa-pen"></i></button>
           </div>
@@ -1676,6 +1700,7 @@ function openOverrideEditor(id, iso, wd){
       <div class="pill-group">
         <div class="pill ${(!existing)?'on-all selected':''}" data-ovstatus="default">Use default</div>
         <div class="pill ${(existing && existing.status==='off')?'on-none selected':''}" data-ovstatus="off">Day off</div>
+        <div class="pill ${(existing && existing.status==='awol')?'on-awol selected':''}" data-ovstatus="awol">AWOL</div>
         <div class="pill ${(existing && existing.status==='custom')?'on-cutoff1 selected':''}" data-ovstatus="custom">Working / Custom</div>
       </div>
     </div>
@@ -1760,6 +1785,38 @@ function openOverrideEditor(id, iso, wd){
   document.getElementById('modalBg').classList.add('show');
 }
 
+function quickToggleAwol(id, iso, wd){
+  const d = merchandisers.find(m=>m.id===id);
+  if(!d) return;
+  const key = ovKey(id, iso);
+  const now = new Date().toISOString();
+  const existing = overrides[key];
+  const isAwol = existing && existing.status==='awol';
+
+  const prevValue = existing ? JSON.parse(JSON.stringify(existing)) : null;
+  const prevExisted = !!existing;
+
+  let toLabel;
+  if(isAwol){
+    delete overrides[key];
+    toLabel = 'Reverted to default';
+  } else {
+    overrides[key] = { status:'awol', note:'', at:now, by:whoAmI() };
+    toLabel = 'Marked AWOL';
+  }
+
+  d.history = d.history || [];
+  d.history.push({action:'date-override', at:now, by:whoAmI(), changes:[{field:`Schedule on ${iso}`, from:'—', to:toLabel}]});
+
+  lastOverrideChange = { key, prevExisted, prevValue, historyOwnerId: d.id };
+  updateRevertButton();
+
+  openDayModal(iso, wd);
+  renderCalendar();
+  saveToServer(true);
+  toast(isAwol ? `${d.name} unmarked AWOL` : `${d.name} marked AWOL for ${iso}`);
+}
+
 function saveOverride(id, iso, wd){
   const d = merchandisers.find(m=>m.id===id);
   const statusEl = document.querySelector('#modalBody [data-ovstatus].selected');
@@ -1776,8 +1833,11 @@ function saveOverride(id, iso, wd){
     delete overrides[key];
     toLabel = 'Reverted to default';
   } else if(status==='off'){
-    overrides[key] = {status:'off', note, at:now};
+    overrides[key] = {status:'off', note, at:now, by:whoAmI()};
     toLabel = 'Day off' + (note?` — ${note}`:'');
+  } else if(status==='awol'){
+    overrides[key] = {status:'awol', note, at:now, by:whoAmI()};
+    toLabel = 'Marked AWOL' + (note?` — ${note}`:'');
   } else {
     const shiftEl = document.querySelector('#modalBody [data-ovshift].selected');
     const shift = shiftEl ? shiftEl.dataset.ovshift : d.shift;
@@ -1789,7 +1849,7 @@ function saveOverride(id, iso, wd){
       end: document.getElementById('ovEnd').value,
       break1hr:{ active:b1active, start:document.getElementById('ovBreak1Start').value, end:document.getElementById('ovBreak1End').value },
       break30:{ active:b2active, start:document.getElementById('ovBreak2Start').value, end:document.getElementById('ovBreak2End').value },
-      note, at:now
+      note, at:now, by:whoAmI()
     };
     toLabel = `${SHIFT_LABEL[shift]} ${fmtTime(overrides[key].start)}–${fmtTime(overrides[key].end)}` + (note?` — ${note}`:'');
   }
@@ -2153,7 +2213,7 @@ function resetIdleTimer(){
   document.addEventListener(evt, resetIdleTimer, {passive:true});
 });
 
-let currentUser = null, currentRole = 'employee';
+let currentUser = null, currentRole = 'employee', currentUserName = '';
 
 document.getElementById('authTabs').addEventListener('click', e=>{
   const t = e.target.closest('.auth-tab'); if(!t) return;
@@ -2256,6 +2316,10 @@ async function loadProfile(userId){
   const { data, error } = await sb.from('profiles').select('role, display_name').eq('id', userId).single();
   currentRole = (!error && data) ? data.role : 'employee';
   document.querySelector('.nav-item[data-view="admin"]').style.display = currentRole==='admin' ? 'flex' : 'none';
+}
+
+function whoAmI(){
+  return currentUserName || (currentUser && currentUser.email) || 'Unknown';
 }
 
 sb.auth.onAuthStateChange(async (event, session)=>{
