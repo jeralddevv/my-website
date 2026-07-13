@@ -777,12 +777,14 @@ input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;bord
             </div>
           </div>
           <div class="cal-legend">
-            <span><span class="cal-dot" style="background:var(--shift-opening)"></span>Opening</span>
-            <span><span class="cal-dot" style="background:var(--shift-mid)"></span>Mid</span>
-            <span><span class="cal-dot" style="background:var(--shift-closing)"></span>Closing</span>
-            <span><span class="cal-dot" style="background:var(--shift-roving)"></span>Roving</span>
-            <span><span class="cal-dot" style="background:var(--shift-halfday)"></span>Halfday</span>
-            <span><span class="cal-dot" style="background:var(--shift-awol)"></span>AWOL</span>
+            <span><span class="cal-dot" style="background:var(--shift-opening)"></span>Opening <b id="legendCountOPENING" class="mono">0</b></span>
+            <span><span class="cal-dot" style="background:var(--shift-mid)"></span>Mid <b id="legendCountMID" class="mono">0</b></span>
+            <span><span class="cal-dot" style="background:var(--shift-closing)"></span>Closing <b id="legendCountCLOSING" class="mono">0</b></span>
+            <span><span class="cal-dot" style="background:var(--shift-roving)"></span>Roving <b id="legendCountROVING" class="mono">0</b></span>
+            <span><span class="cal-dot" style="background:var(--shift-halfday)"></span>Halfday <b id="legendCountHALFDAY" class="mono">0</b></span>
+            <span><span class="cal-dot" style="background:var(--shift-awol)"></span>AWOL <b id="legendCountAWOL" class="mono">0</b></span>
+            <span style="margin-left:auto;font-weight:700;">Total present: <b id="legendCountTOTAL" class="mono">0</b></span>
+            <span class="dim" id="legendCountDateLabel" style="font-size:11px;"></span>
           </div>
           <div class="cal-grid" id="calGrid"></div>
         </div>
@@ -1637,7 +1639,40 @@ function renderCalendar(){
     </div>`;
 }
   document.getElementById('calGrid').innerHTML = html;
-  document.querySelectorAll('.cal-cell').forEach(c=>c.addEventListener('click', ()=>openDayModal(c.dataset.date, c.dataset.wd)));
+  document.querySelectorAll('.cal-cell').forEach(c=>c.addEventListener('click', ()=>{
+    openDayModal(c.dataset.date, c.dataset.wd);
+    updateCalLegendCounts(c.dataset.date, c.dataset.wd);
+  }));
+
+  const todayCell = document.querySelector('.cal-cell.today');
+  if(todayCell){
+    updateCalLegendCounts(todayCell.dataset.date, todayCell.dataset.wd);
+  } else {
+    // viewing a month without "today" in it — show counts for the 1st of the shown month
+    const firstIso = localISODate(new Date(year, month, 1));
+    const firstWd = DAYS[(new Date(year, month, 1).getDay()+6)%7];
+    updateCalLegendCounts(firstIso, firstWd);
+  }
+}
+
+function updateCalLegendCounts(iso, wd){
+  const staff = staffOnDate(iso, wd);
+  const counts = {OPENING:0, MID:0, CLOSING:0, ROVING:0, HALFDAY:0, AWOL:0};
+  staff.forEach(d=>{
+    const eff = effectiveForDate(d, iso, wd);
+    if(counts.hasOwnProperty(eff.shift)) counts[eff.shift]++;
+  });
+  Object.keys(counts).forEach(k=>{
+    const el = document.getElementById('legendCount'+k);
+    if(el) el.textContent = counts[k];
+  });
+  const totalEl = document.getElementById('legendCountTOTAL');
+  if(totalEl) totalEl.textContent = staff.length;
+  const labelEl = document.getElementById('legendCountDateLabel');
+  if(labelEl){
+    const dt = new Date(iso+'T00:00:00');
+    labelEl.textContent = dt.toLocaleDateString('default',{weekday:'short',month:'short',day:'numeric'});
+  }
 }
 
 function openDayModal(iso, wd){
@@ -2313,8 +2348,9 @@ document.getElementById('forgotForm').addEventListener('submit', async e=>{
 document.getElementById('logoutBtn').addEventListener('click', ()=> sb.auth.signOut());
 
 async function loadProfile(userId){
-  const { data, error } = await sb.from('profiles').select('role, display_name').eq('id', userId).single();
+  const { data, error } = await sb.from('profiles').select('role, username, display_name').eq('id', userId).single();
   currentRole = (!error && data) ? data.role : 'employee';
+  currentUserName = (!error && data && data.username) ? data.username : (!error && data && data.display_name) ? data.display_name : (currentUser && currentUser.email) || 'Unknown';
   document.querySelector('.nav-item[data-view="admin"]').style.display = currentRole==='admin' ? 'flex' : 'none';
 }
 
